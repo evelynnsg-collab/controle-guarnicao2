@@ -104,7 +104,7 @@
   </div>
   <div class="uploadbar">
     <label class="upload-btn" for="fileInput"><span class="upload-icon">⇧</span><span>Anexar planilha atualizada</span><input id="fileInput" type="file" accept=".xlsx,.xlsm,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
-    <div class="upload-meta"><div class="upload-name" id="fileName">Usando a base incorporada neste painel</div><div class="upload-help">Aceita Excel (.xlsx/.xlsm) ou CSV. O painel procura automaticamente a aba de controle/progresso de treinamentos.</div></div>
+    <div class="upload-meta"><div class="upload-name" id="fileName">Usando a base incorporada neste painel</div><div class="upload-help">Aceita Excel (.xlsx/.xlsm) ou CSV. Ao importar, a nova base fica salva neste navegador e só muda quando outra planilha for importada.</div></div>
     <span class="upload-status" id="uploadStatus">Base original</span>
   </div>
 
@@ -165,6 +165,33 @@ let trainings = [
 {id:'PR12',name:'Jatos ventiladores',objective:'L11',owner:'GISELE',local:'DBO',hours:'',progress:0,total:null,done:null,pending:null,startText:'',end:'',turn:'AJUSTAR',obs:'Gisele à frente do processo',status:'A programar'},
 {id:'PR13',name:'PCL - EGO',objective:'Todos ASL da Linha 13',owner:'SIMONE',local:'EGO',hours:'',progress:0,total:null,done:null,pending:null,startText:'25/09/2026',end:'',turn:'Manhã / Tarde / Noite',obs:'Simone à frente do processo',status:'A programar'}
 ];
+const STORAGE_KEY='dashboard_treinamentos_base_v1';
+function savePersistentBase(data,fileName,sheet){
+ try{
+  const payload={version:1,savedAt:new Date().toISOString(),fileName:fileName||'Planilha importada',sheet:sheet||'',trainings:data};
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));
+  return true;
+ }catch(err){console.warn('Não foi possível salvar a base localmente.',err);return false}
+}
+function restorePersistentBase(){
+ try{
+  const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return false;
+  const payload=JSON.parse(raw);if(!payload||!Array.isArray(payload.trainings)||!payload.trainings.length)return false;
+  trainings=payload.trainings;
+  const when=payload.savedAt?new Date(payload.savedAt):null;
+  const stamp=when&&!Number.isNaN(when.getTime())?when.toLocaleString('pt-BR'):'salva anteriormente';
+  el('fileName').textContent=payload.fileName||'Planilha salva';
+  el('uploadStatus').className='upload-status ok';
+  el('uploadStatus').textContent=`${trainings.length} ações salvas`;
+  el('dataSourceText').textContent='Painel ativo • usando a última planilha salva neste navegador';
+  el('baseRef').textContent=`${payload.fileName||'Planilha salva'}${payload.sheet?` • aba ${payload.sheet}`:''} • salva em ${stamp}`;
+  return true;
+ }catch(err){
+  console.warn('Base salva inválida; usando a base incorporada.',err);
+  try{localStorage.removeItem(STORAGE_KEY)}catch(_){ }
+  return false;
+ }
+}
 const colors={'Concluído':'#35c7cf','Em andamento':'#68d641','A programar':'#8f4cff','Não iniciado':'#ff721f'};
 const statusOrder=['Concluído','Em andamento','A programar','Não iniciado'];
 const statusColor=s=>colors[s]||'#8e99a8';
@@ -186,6 +213,7 @@ function refreshFilterOptions(){
  if([...el('ownerFilter').options].some(o=>o.value===current.owner))el('ownerFilter').value=current.owner;
  if([...el('localFilter').options].some(o=>o.value===current.local))el('localFilter').value=current.local;
 }
+restorePersistentBase();
 refreshFilterOptions();
 
 function filtered(){
@@ -346,8 +374,12 @@ async function parseXLSX(file){
 async function importSpreadsheet(file){
  const st=el('uploadStatus'),nm=el('fileName');st.className='upload-status';st.textContent='Lendo planilha…';nm.textContent=file.name;
  try{let rows,sheet='CSV';if(/\.csv$/i.test(file.name)){rows=parseCSV(await file.text())}else{const result=await parseXLSX(file);rows=result.rows;sheet=result.name}
-   const imported=rowsToTrainings(rows);trainings=imported;selectedId=null;el('searchFilter').value='';el('statusFilter').value='';el('ownerFilter').value='';el('localFilter').value='';refreshFilterOptions();renderDetail(null);render();
-   st.className='upload-status ok';st.textContent=`${imported.length} ações carregadas`;el('dataSourceText').textContent='Painel ativo • dados carregados da planilha anexada';el('baseRef').textContent=`${file.name} • aba ${sheet}`;
+   const imported=rowsToTrainings(rows);trainings=imported;selectedId=null;el('searchFilter').value='';el('statusFilter').value='';el('ownerFilter').value='';el('localFilter').value='';
+   const persisted=savePersistentBase(imported,file.name,sheet);
+   refreshFilterOptions();renderDetail(null);render();
+   st.className=persisted?'upload-status ok':'upload-status err';st.textContent=persisted?`${imported.length} ações salvas`:`${imported.length} ações carregadas • não foi possível fixar`;
+   el('dataSourceText').textContent=persisted?'Painel ativo • planilha fixada neste navegador':'Painel ativo • dados carregados apenas nesta sessão';
+   el('baseRef').textContent=`${file.name} • aba ${sheet}${persisted?' • base salva':''}`;
  }catch(err){console.error(err);st.className='upload-status err';st.textContent='Erro na leitura';nm.textContent=`${file.name} — ${err.message}`}
 }
 
