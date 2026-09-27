@@ -18,12 +18,6 @@ async function readJsonBody(req) {
 export default async function handler(req, res) {
   noStore(res);
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(503).json({
-      error: 'A base central ainda não foi conectada ao Vercel Blob neste projeto.'
-    });
-  }
-
   if (req.method === 'GET') {
     try {
       const result = await get(PATHNAME, { access: 'private', useCache: false });
@@ -38,7 +32,9 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Nenhuma base central publicada ainda.' });
       }
       console.error('Erro ao ler base central:', error);
-      return res.status(500).json({ error: 'Não foi possível carregar a base central.' });
+      return res.status(503).json({
+        error: 'A base central ainda não está disponível. Conecte um Vercel Blob privado a este projeto.'
+      });
     }
   }
 
@@ -75,7 +71,9 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('Erro ao salvar base central:', error);
-      return res.status(500).json({ error: 'Não foi possível publicar a nova base central.' });
+      return res.status(503).json({
+        error: 'Não foi possível publicar a base central. Verifique se um Vercel Blob privado está conectado ao projeto.'
+      });
     }
   }
 
